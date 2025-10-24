@@ -45,11 +45,11 @@ void raus(void)
   if(errors) fprintf(stderr,"%d error%s found!\n",errors,multname[errors>1]);
   if(debug_info&&out)
     cleanup_db(out);
-  while(nesting>=0) leave_block();
   /*FIXME: do I have to close input-file? */
   if(!wpo)
     cleanup_cg(out);
   emit_flush(out);
+  while(nesting>=0) leave_block();
   if(cmdfile) fclose(cmdfile);
   if(out) fclose(out);
   if(ic1) fclose(ic1);

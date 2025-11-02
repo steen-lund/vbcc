@@ -43,6 +43,9 @@ This backend provides the following additional options:
               Put near data in zpage section. Used for small memory model
               on Apple IIgs.
 
+    @item -msfp4
+              Use MSBasic 32bit format for floating point rather than wozfp format.
+
     @item -ieee
               Use 32/64bit IEEE format for floating point rather than wozfp format.
 
@@ -200,42 +203,60 @@ The basic data types are represented like this:
      __moduint32                32x32=>32 unsigned modulo
 @end example
 
-@subsection Floating Point
+@subsection Floating Point / wozfp
 
-    By default, all floating point types are implemented as 32bit values.
-    The format used by the floating point routines published by Roy Rankin
-    and Steve Wozniak is used. While this does work for many use cases, it
+    By default, all floating point types are implemented as 32bit values
+    using the format used by the floating point routines published by Roy Rankin
+    and Steve Wozniak. While this does work for many use cases, it
     is not fully C compliant by any means. Calculation of constants in the
     compiler is not done in that format. Therefore, the results of
     calculations done at compile-time may be different from those at run-time.
-    The corresponding math library must be linked using @code{-lm}.
+    The corresponding math library must be linked using @code{-lm/-lms}.
 
-    As an alternative, @code{vbcc} can use IEEE format by specifying
-    @code{-ieee}. A corresponding library is not yet available.
+    These routines are very compact, but they are very slow. They
+    should probably only be used when saving memory is the top priority.
 
-    When using floating point, the following library routines are needed
-    (without @code{-ieee}):
+@subsection Floating Point / MSBASIC
 
+    The second, usually preferable, alternative is based on the math
+    routines from 6502 Microsoft Basic (which has been released under
+    MIT license - see below). These routines have been adapted
+    to work with vbcc65816. They deliver much better performance than the
+    wozfp code and are usually somewhat more precise. Currently only
+    the 32bit version of those routines is supported (the 40bit version
+    is not).
+    You have to specify @code{-msfp4} and link the corresponding math library
+    using @code{-lms4/-lms4h/-lms4s}.
+
+
+     License from the release of MSBasic:
 @example
-    __addflt32                 floating point addition
-    __subflt32                 floating point subtraction
-    __mulflt32                 floating point multiplication
-    __divflt32                 floating point division
-    __negflt32                 floating point negation (-x)
-    __cmpsflt32                floating point comparison
-                               (sets @code{a} to pos., neg. or zero, depending on
-                               the comparison result)
-    __sint16toflt32            convert signed 16bit integer to floating point
-    __uint16toflt32            convert unsigned 16bit integer to floating point
-    __sint32toflt32            convert signed 32bit integer to floating point
-    __uint32toflt32            convert unsigned 32bit integer to floating point
-    __flt32tosint16            convert floating point value to signed 16bit integer
-    __flt32touint16            convert floating point value to unsigned 16bit integer
-    __flt32tosint32            convert floating point value to signed 32bit integer
-    __flt32touint32            convert floating point value to unsigned 32bit integer
+MIT License 
+
+    Copyright (c) Microsoft Corporation.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE
 @end example
 
-     Further math library functions may be needed by user code or the C library.
+@subsection Floating Point / IEEE
+
+    Not yet supported.
 
 
 
@@ -337,6 +358,8 @@ extern pascal Handle __NewHandle () inline(0x0902,dispatcher);
         @item __MHUGE          (huge model)
         @item __SIZE_T_INT     (tiny and large model)
         @item __SIZE_T_LONG    (huge model)
+	@item __WOZFP__        (wozfp floating point)
+	@item __MSFP4__	       (32bit MSBasic floating point)
 
 @end table
 

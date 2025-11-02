@@ -13,7 +13,7 @@ static char FILE_[]=__FILE__;
 /*  Public data that MUST be there.                             */
 
 /* Name and copyright. */
-char cg_copyright[]="vbcc 6502 code-generator V0.6b (c) in 2025 by Volker Barthelmann";
+char cg_copyright[]="vbcc 6502 code-generator V0.7 (c) in 2025 by Volker Barthelmann";
 
 /*  Commandline-flags the code-generator accepts:
     0: just a flag
@@ -28,7 +28,8 @@ int g_flags[MAXGF]={0,0,
 		    VALFLAG,0,0,0,
 		    0,0,0,
 		    0,0,0,0,0,0,
-		    0,0};
+		    0,0,0,0,0,
+		    0};
 
 /* the flag-name, do not use names beginning with l, L, I, D or U, because
    they collide with the frontend */
@@ -39,7 +40,8 @@ char *g_flags_name[MAXGF]={"std-syntax","no-rax",
 			   "common-banknr","btmp-zpage","oldfp","large",
 			   "glob-acc","avoid-bank-switch","manual-banking",
 			   "atascii","65c02","nox","mega65","ce02","c02",
-			   "div-bug","m65io"};
+			   "div-bug","m65io","msfp4","msfp5","mshw",
+			   "float-store"};
 
 /* the results of parsing the command-line-flags will be stored here */
 union ppi g_flags_val[MAXGF];
@@ -123,6 +125,9 @@ char *g_attr_name[]={"__interrupt","__zpage","__nocpr",0};
 #define C02ALT     (g_flags[23]&USEDFLAG)
 #define DIVBUG     (g_flags[24]&USEDFLAG)
 #define M65IO      (g_flags[25]&USEDFLAG)
+#define MS4        (g_flags[26]&USEDFLAG)
+#define MS5        (g_flags[27]&USEDFLAG)
+#define FSTORE     (g_flags[29]&USEDFLAG)
 
 
 #define STR_NEAR "near"
@@ -173,6 +178,7 @@ static char *marray[]={"__section(x)=__vattr(\"section(\"#x\")\")",
                        "__far=__attr(\"far\")",
                        "__near=__attr(\"near\")",
                        "__huge=__attr(\"huge\")",
+		       "__WOZFP__",
 		       0};
 
 /* special registers */
@@ -188,8 +194,8 @@ static int yval;
 
 static int t1,t2,f1,f2; /*tODO: remove*/
 
-static int pushedacc,pushedx,nopeep,cbmascii,atascii,ieee;
-static int storedacc,storedx;
+static int pushedacc,pushedx,nopeep,cbmascii,atascii,ieee,ms4,ms5,wozfp;
+static int storedacc,storedx,rinfpacc;
 static int c02,m65,ce02,zzero,noy;
 static int divbug;
 static int m65io;
@@ -443,6 +449,10 @@ static int get_reg(FILE *f,IC *p,int t)
       }
       if(pass==2&&!(regs[r]&4))
 	continue;
+      if((ms4||ms5)&&(r==t3||r==t4||r==t3t4)){
+	if(ISFLOAT(p->typf)) continue;
+	if(p->code==CONVERT&&ISFLOAT(p->typf2)) continue;
+      }
       if(p->q1.flags&REG){
 	if(p->q1.reg==r||p->q1.reg==r1||p->q1.reg==r2) continue;
 	if(r1==0&&reg_pair(p->q1.reg,&rp)&&(rp.r1==r||rp.r2==r)) continue;
@@ -643,6 +653,26 @@ void sety(FILE *f,int val)
   yval=val;
 }
 
+static int msptr2;
+
+static void setmsptr()
+{
+  if(msptr2){
+    mregnames[t3]="___msptr2";
+    mregnames[t4]="___msptr2+1";
+  }else{
+    mregnames[t3]="___msptr";
+    mregnames[t4]="___msptr+1";
+  }
+  msptr2=0;
+}
+
+static void resetmsptr()
+{
+  mregnames[t3]="r30";
+  mregnames[t4]="r31";
+}
+
 static void cnv_fp(void)
 {
   double d,mant;
@@ -655,15 +685,78 @@ static void cnv_fp(void)
   }else{
     d=zld2d(vldouble);
     mant=frexp(d,&exp);
-    exp=(exp+127)&255;
-    t=((unsigned long)(mant*8388608))&0xffffff;
-    t|=((long)exp)<<24;
+    if(ms4){
+      if(mant>=0)
+	t=((unsigned long)(mant*(65536.*256.)))&0x7fffff;
+      else
+	t=(((unsigned long)((-mant)*(65536.*256.)))&0x7fffff)|0x800000;
+     exp=(exp+128)&255;
+      if(d==0) exp=0;
+      t=exp|((t&0xff0000)>>8)|((t&0xff00)<<8)|((t&0xff)<<24);
+      vmax=l2zm((long)t);
+    }else if(ms5){
+      if(mant>=0)
+	t=((unsigned long)(mant*(65536.*65536.)))&0x7fffffff;
+      else
+	t=(((unsigned long)((-mant)*(65536.*65536.)))&0x7fffffff)|0x80000000;
+      exp=(exp+128)&255;
+      if(d==0) exp=0;
+      t=((t&0xff000000)>>24)|((t&0xff0000)>>8)|((t&0xff00)<<8)|((t&0xff)<<24);
+      vmax=l2zm(exp);
+      vmax=zmor(vmax,zmlshift(l2zm(t),l2zm(8l)));
+    }else{
+      exp=(exp+127)&255;
+      t=((unsigned long)(mant*8388608))&0xffffff;
+      t|=((long)exp)<<24;
     
-    t=((t&0xff)<<24)|((t&0xff00)<<8)|((t&0xff0000)>>8)|((t&0xff000000)>>24);
-    vmax=l2zm((long)t);
-    if(mant==0&&d==0) vmax=Z0;
+      t=((t&0xff)<<24)|((t&0xff00)<<8)|((t&0xff0000)>>8)|((t&0xff000000)>>24);
+      vmax=l2zm((long)t);
+      if(mant==0&&d==0) vmax=Z0;
+    }
   }
 }
+
+/* check if storing the fp value in z can be omitted */
+int check_fpacc(IC *p)
+{
+  int use,r;
+  if(!isreg(z)) return 0;
+  use=0;
+  r=p->z.reg;
+  p=p->next;
+  while(p){
+    int c=p->code,f=ISFLOAT(p->typf);
+    if(f&&(c==ADD||c==MULT||c==COMPARE)){
+      if(isreg(q1)&&p->q1.reg==r) use++;
+      if(isreg(q2)&&p->q2.reg==r) use++;
+      if(use!=1){r=use=0;break;}
+    }else if(f&&(c==SUB||c==DIV)){
+      if(isreg(q1)&&p->q1.reg==r) if(ieee) use++; else {r=0;break;}
+      if(isreg(q2)&&p->q2.reg==r) if(!ieee) use++; else {r=0;break;}
+      if(use!=1){r=use=0;break;}
+    }else if(0&&f&&c==COMPARE){
+      if(isreg(q1)&&p->q1.reg==r) if(!ieee) use++; else {r=0;break;}
+      if(isreg(q2)&&p->q2.reg==r) if(ieee) use++; else {r=0;break;}
+      if(use!=1) {r=use=0;break;}
+    }else if(f&&c==MINUS&&!ieee){
+      if(isreg(q1)&&p->q1.reg==r) use++;
+      if(use!=1){r=use=0;break;}
+    }else if(f&&c==CONVERT){
+      if(isreg(q1)&&p->q1.reg==r&&!f) use++;
+      if(use!=1&&(f||ISFLOAT(p->typf2))){r=0;break;}
+    }else{
+      if(f) {r=use=0;break;}
+    }
+    if(isreg(z)&&p->z.reg==r) break;
+    if(c==FREEREG&&p->q1.reg==r) break;
+    if(c==CALL||(c>=LABEL&&c<=BRA)) return 0;
+    p=p->next;
+  }
+  rinfpacc=r;
+  return use;
+}
+
+
 
 static void emit_ieee(FILE *f,union atyps *p,int t)
 {
@@ -679,11 +772,11 @@ static void emit_lobyte(FILE *f,obj *o,int t)
   if(o->flags&KONST){
     if(o->flags&DREFOBJ){
       eval_const(&o->val,o->dtyp);
-       emit(f,"%d",zm2l(vmax));
+       emit(f,"%ld",zm2l(vmax));
     }else{
       eval_const(&o->val,t);
       if(ISFLOAT(t)) cnv_fp();
-      emit(f,"#%d",zm2l(vmax)&255);
+      emit(f,"#%d",(int)(zm2l(vmax))&255);
     }
   }else if(o->flags&VARADR){
     emit(f,"#<(");
@@ -706,11 +799,11 @@ static void emit_hibyte(FILE *f,obj *o,int t)
   if(o->flags&KONST){
     if(o->flags&DREFOBJ){
       eval_const(&o->val,o->dtyp);
-      emit(f,"%d",zm2l(vmax)+1);
+      emit(f,"%ld",zm2l(vmax)+1);
     }else{
       eval_const(&o->val,t);
       if(ISFLOAT(t)) cnv_fp();
-      emit(f,"#%d",(zm2l(vmax)>>8)&255);
+      emit(f,"#%d",(int)(zm2l(vmax)>>8)&255);
     }
   }else if(o->flags&VARADR){
     emit(f,"#>(");
@@ -740,11 +833,11 @@ static void emit_byte3(FILE *f,obj *o,int t)
   if(o->flags&KONST){
     if(o->flags&DREFOBJ){
       eval_const(&o->val,o->dtyp);
-      emit(f,"%d",zm2l(vmax)+2);
+      emit(f,"%ld",zm2l(vmax)+2);
     }else{
       eval_const(&o->val,t);
       if(ISFLOAT(t)) cnv_fp();
-      emit(f,"#%d",(zm2l(vmax)>>16)&255);
+      emit(f,"#%d",(int)(zm2l(vmax)>>16)&255);
     }
   }else if((o->flags&(REG|DREFOBJ))==REG){
     emit(f,"%s+2",mregnames[o->reg]);
@@ -764,11 +857,11 @@ static void emit_byte4(FILE *f,obj *o,int t)
   if(o->flags&KONST){
     if(o->flags&DREFOBJ){
       eval_const(&o->val,o->dtyp);
-      emit(f,"%d",zm2l(vmax)+3);
+      emit(f,"%ld",zm2l(vmax)+3);
     }else{
       eval_const(&o->val,t);
       if(ISFLOAT(t)) cnv_fp();
-      emit(f,"#%d",(zm2l(vmax)>>24)&255);
+      emit(f,"#%d",(int)(zm2l(vmax)>>24)&255);
     }
   }else if((o->flags&(REG|DREFOBJ))==REG){
     emit(f,"%s+3",mregnames[o->reg]);
@@ -778,6 +871,27 @@ static void emit_byte4(FILE *f,obj *o,int t)
     emit_obj(f,o,t);
     if(!(o->flags&DREFOBJ))
       o->val.vmax=zmsub(o->val.vmax,l2zm(3L));
+  }
+}
+static void emit_byte5(FILE *f,obj *o,int t)
+{
+  if(o->flags&KONST){
+    if(o->flags&DREFOBJ){
+      eval_const(&o->val,o->dtyp);
+      emit(f,"%ld",zm2l(vmax)+4);
+    }else{
+      eval_const(&o->val,t);
+      if(ISFLOAT(t)) cnv_fp();
+      emit(f,"#%d",(int)(zm2l(zmrshift(vmax,l2zm(32l))))&255);
+    }
+  }else if((o->flags&(REG|DREFOBJ))==REG){
+    emit(f,"%s+4",mregnames[o->reg]);
+  }else{
+    if(!(o->flags&DREFOBJ))
+      o->val.vmax=zmadd(o->val.vmax,l2zm(4L));
+    emit_obj(f,o,t);
+    if(!(o->flags&DREFOBJ))
+      o->val.vmax=zmsub(o->val.vmax,l2zm(4L));
   }
 }
 static void ldq_offset(FILE *f,obj *o)
@@ -926,6 +1040,32 @@ static void do_byte4(FILE *f,char *s,obj *o,int type)
   emit_byte4(f,o,type);
   emit(f,"\n");
   if(ami) o->am->offset-=3;
+}
+
+static void do_byte5(FILE *f,char *s,obj *o,int type)
+{
+  int ami=0;
+  if(o->am){
+    if(o->am->flags==IMM_IND){
+      sety(f,o->am->offset+4);
+    }else{
+      do_amload(f,o);
+      if(o->am->flags==GPR_IND){
+	emit(f,"\tiny\n\tiny\n\tiny\n");
+      }else{
+	o->am->offset+=4;ami=1;
+      }
+      yval=NOVAL;
+    }
+  }else  if((o->flags&(DREFOBJ|KONST))==DREFOBJ){
+    sety(f,4);
+  }else if((o->flags&(VAR|REG|VARADR))==VAR&&(o->v->storage_class==AUTO||o->v->storage_class==REGISTER)){
+    sety(f,(int)real_offset(o)+4);
+  }
+  emit(f,"\t%s\t",s);
+  emit_byte5(f,o,type);
+  emit(f,"\n");
+  if(ami) o->am->offset-=4;
 }
 
 static void load_lobyte(FILE *f,obj *o,int t)
@@ -1126,7 +1266,7 @@ static void load_address(FILE *f,int r,struct obj *o,int t)
     }
   }else if((o->flags&(KONST|DREFOBJ))==KONST){
     int l=addfpconst(o,t);
-    if(!ieee) ierror(0);
+    if(!ieee&&!ms4&&!ms5) ierror(0);
     if(!reg_pair(r,&rp)) ierror(0);
     emit(f,"\tlda\t#>%s%d\n",labprefix,l);
     emit(f,"\tsta\t%s\n",mregnames[rp.r2]);
@@ -1134,6 +1274,39 @@ static void load_address(FILE *f,int r,struct obj *o,int t)
     emit(f,"\tsta\t%s\n",mregnames[rp.r1]);    
   }else
     ierror(0);
+}
+
+static void faddr(FILE *f,obj *o,int t)
+{
+  if(regs[LAST_PAIR]) ierror(0);
+  regs[LAST_PAIR]=1;
+  if(ms4||ms5) setmsptr();
+  load_address(f,LAST_PAIR,o,t);
+  if(ms4||ms5) resetmsptr();
+  BSET(regused,t3);
+  BSET(regused,t4);
+  regs[LAST_PAIR]=0;
+}
+
+static void fload(FILE *f,obj *o,int t)
+{
+  if((o->flags&(REG|DREFOBJ))!=REG||o->reg!=rinfpacc){
+    faddr(f,o,t);
+    emit(f,"\tjsr\t%s__fload%c\n",idprefix,((t==FLOAT||!ieee)?'s':'d'));
+    yval=NOVAL;
+  }else
+    emit(f,"; removed fload %s\n",regnames[rinfpacc]);
+  rinfpacc=0;
+}
+
+static void fstore(FILE *f,IC *p,int t)
+{
+  if(FSTORE||!check_fpacc(p)){
+    faddr(f,&p->z,t);
+    emit(f,"\tjsr\t%s__fstore%c\n",idprefix,((t==FLOAT||!ieee)?'s':'d'));
+    yval=NOVAL;
+  }else
+    emit(f,"; removed fstore %s\n",regnames[rinfpacc]);
 }
 
 
@@ -1392,10 +1565,10 @@ static void far_copy(FILE *f,IC *p)
     if(!reg_pair(LAST_PAIR,&rp)) ierror(0);
     emit(f,"\tlda\t%s\n",mregnames[sp]);
     if(pushed) emit(f,"\tclc\n");
-    if(pushed&0xff) emit(f,"\tadc\t#%d\n",(pushed&0xff));
+    if(pushed&0xff) emit(f,"\tadc\t#%d\n",(int)(pushed&0xff));
     emit(f,"\tsta\t%s\n",mregnames[rp.r1]);
     emit(f,"\tlda\t%s+1\n",mregnames[sp]);
-    if(pushed) emit(f,"\tadc\t#%d\n",((pushed>>8)&0xff));
+    if(pushed) emit(f,"\tadc\t#%d\n",(int)((pushed>>8)&0xff));
     emit(f,"\tsta\t%s\n",mregnames[rp.r2]);
     pushed+=zm2l(p->q2.val.vmax);
     emit(f,"\tldx\t#%d\n",bankcnum);
@@ -1434,9 +1607,9 @@ static void far_copy(FILE *f,IC *p)
     sety(f,b>=0?b:bankcnum);
   }
   l=zm2l(p->q2.val.vmax);
-  emit(f,"\tlda\t#%d\n",(l>>8)&0xff);
+  emit(f,"\tlda\t#%d\n",(int)((l>>8)&0xff));
   emit(f,"\tsta\t%s__bankcopy_len+1\n",idprefix);
-  emit(f,"\tlda\t#%d\n",(l)&0xff);
+  emit(f,"\tlda\t#%d\n",(int)(l&0xff));
   emit(f,"\tsta\t%s__bankcopy_len\n",idprefix);
   emit(f,"\tlda\t#%d\n",cbank>=0?cbank:bankcnum);
   emit(f,"\tjsr\t%s__bankcopy\n",idprefix);
@@ -1785,9 +1958,9 @@ static void emit_obj(FILE *f,struct obj *p,int t)
 {
   if(p->am){
     if(p->am->flags==IMM_IND)
-      emit(f,"(%s),y ;am(%ld)",mregnames[p->am->base],p->am->offset);
+      emit(f,"(%s),%c ;am(%ld)",mregnames[p->am->base],noy==2?'z':'y',p->am->offset);
     else if(p->am->flags==GPR_IND)
-      emit(f,"(%s),y ;am(%s)",mregnames[p->am->base],mregnames[p->am->idx]);
+      emit(f,"(%s),%c ;am(%s)",mregnames[p->am->base],noy==2?'z':'y',mregnames[p->am->idx]);
     else if(p->am->flags==ABS_IND){
       emit(f,"%ld",p->am->offset);
       if(p->am->v){
@@ -1877,7 +2050,8 @@ static void peephole(struct IC *p)
 	      mc=0;
 	    if(!o&&(c2==ADD||c2==SUB||c2==AND||c2==OR||c2==XOR)&&/*(p2->typf&NQ)==CHAR&&*/!p2->q1.am&&!p2->z.am&&
 	       (p2->q1.flags&(REG|DREFOBJ))==(REG|DREFOBJ)&&
-	       p2->q1.flags==p2->z.flags&&p2->q1.reg==r&&p2->z.reg==r){
+	       p2->q1.flags==p2->z.flags&&p2->q1.reg==r&&p2->z.reg==r&&
+	       (!m65||!ISLONG(p2->typf))){
 	      o=&p2->q1;use=p2;
 	      dub=p2;
 	      continue;
@@ -1967,24 +2141,31 @@ static void peephole(struct IC *p)
         if(c2!=CALL&&(c2<LABEL||c2>BRA)/*&&c2!=ADDRESS*/){
 	  if(!o&&(c2==ADD||c2==SUB||c2==AND||c2==OR||c2==XOR)&&/*(p2->typf&NQ)==CHAR&&*/!p2->q1.am&&!p2->z.am&&
 	     (p2->q1.flags&(REG|DREFOBJ))==(REG|DREFOBJ)&&
-	     p2->q1.flags==p2->z.flags&&p2->q1.reg==r&&p2->z.reg==r){
+	     p2->q1.flags==p2->z.flags&&p2->q1.reg==r&&p2->z.reg==r&&
+	     (!m65||!ISLONG(p->typf))){
 	    o=&p2->q1;use=p2;
 	    dub=p2;
 	    continue;
 	  }
           if(!p2->q1.am&&(p2->q1.flags&(REG|DREFOBJ))==(REG|DREFOBJ)&&p2->q1.reg==r){
-            if(o||(ind&&(q1typ(p2)&NQ)!=CHAR)) break;
-	    if(ieee&&ISFLOAT(q1typ(p2))) break;
+	    int t=q1typ(p2)&NQ;
+            if(o||(ind&&t!=CHAR)) break;
+	    if(!wozfp&&ISFLOAT(t)) break;
+	    if(m65&&ISLONG(t)) break;
             o=&p2->q1;use=p2;
           }
           if(!p2->q2.am&&(p2->q2.flags&(REG|DREFOBJ))==(REG|DREFOBJ)&&p2->q2.reg==r){
-            if(o||(ind&&(q2typ(p2)&NQ)!=CHAR)) break;
-	    if(ieee&&ISFLOAT(q2typ(p2))) break;
+	    int t=q2typ(p2)&NQ;
+            if(o||(ind&&t!=CHAR)) break;
+	    if(!wozfp&&ISFLOAT(t)) break;
+	    if(m65&&ISLONG(t)) break;
             o=&p2->q2;use=p2;
           }
           if(!p2->z.am&&(p2->z.flags&(REG|DREFOBJ))==(REG|DREFOBJ)&&p2->z.reg==r){
-            if(o||(ind&&(ztyp(p2)&NQ)!=CHAR)) break;
-	    if(ieee&&ISFLOAT(ztyp(p2))) break;
+	    int t=ztyp(p2)&NQ;
+            if(o||(ind&&t!=CHAR)) break;
+	    if(!wozfp&&ISFLOAT(t)) break;
+	    if(m65&&ISLONG(t)) break;
             o=&p2->z;use=p2;
           }
         }
@@ -2428,8 +2609,17 @@ int init_cg(void)
 
   if(IEEE){
     ieee=1;
+    marray[7]="__IEEE__";
     msizetab[DOUBLE]=msizetab[LDOUBLE]=l2zm(8L);
-  }
+  }else if(MS4){
+    ms4=1;
+    marray[7]="__MSFP4__";
+  }else if(MS5){
+    ms5=1;
+    marray[7]="__MSFP5__";
+    msizetab[FLOAT]=msizetab[DOUBLE]=msizetab[LDOUBLE]=l2zm(5L);
+  }else
+    wozfp=1;
 
 
   mregnames[0]=regnames[0]="noreg";
@@ -2543,6 +2733,7 @@ int init_cg(void)
   /*  This is not optimal but simple.                             */
   regsa[ry]=regsa[sp]=regsa[sp1]=regsa[sp2]=REGSA_NEVER;
   regsa[t1]=regsa[t2]=regsa[t3]=regsa[t4]=REGSA_NEVER;
+  regsa[t1t2]=regsa[t3t4]=REGSA_NEVER;
   regscratch[ra]=regscratch[rx]=regscratch[rax]=1;
   if(!GLOBACC)
     regsa[ra]=regsa[rx]=regsa[rax]=REGSA_TEMPS;
@@ -2948,6 +3139,11 @@ void gen_dc(FILE *f,int t,struct const_list *p)
 	emit(f,",");
 	gval.vmax=zmand(zmrshift(vmax,l2zm(16L)),l2zm(0xffffL));
 	emitval(f,&gval,MAXINT);
+	if(ISFLOAT(t)&&ms5){
+	  emit(f,"\n\tbyte\t");
+	  gval.vmax=zmand(zmrshift(vmax,l2zm(32L)),l2zm(0xffL));
+	  emitval(f,&gval,MAXINT);
+	}
       }
     }else{
       if(ISFPOINTER(t)){
@@ -3206,7 +3402,7 @@ static int handle_m65(FILE *f,IC *p)
 	emit(f,"\tlda\t%s\n",mregnames[sp]);
 	emit(f,"\tldx\t%s+1\n",mregnames[sp]);
 	emit(f,"\tclc\n");
-	emit(f,"\tadc\t#%d\n",pushed);
+	emit(f,"\tadc\t#%d\n",(int)pushed);
 	emit(f,"\tbcc\t%s%d\n",labprefix,++label);
 	emit(f,"\tinx\n");
 	emit(f,"%s%d:\n",labprefix,label);
@@ -3531,7 +3727,7 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
       /*if(c==SUBIFP) c=SUB;*/
 
 
-      if(c==MINUS){
+      if(c==MINUS&&(!ISFLOAT(t)||!ms4&&!ms5)){
 	if(isacc(q1)&&isacc(z)){
 	  emit(f,"\teor\t#255\n");
 	  if(c02&&ISCHAR(t)){
@@ -3592,6 +3788,65 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
       if(c==CONVERT){
 	int to=q1typ(p)&NU;
 	t&=NU;
+	if(ISFLOAT(to)){
+	  if(!ms4&&!ms5) ierror(0);
+	  get_acc(f,p,POINTER);
+	  fload(f,&p->q1,t);
+	  emit(f,"\tjsr\t%s__fltto%cint%d\n",idprefix,(t&UNSIGNED)?'u':'s',(t&NQ)<=INT?16:32);
+	  yval=NOVAL;
+	  if((t&NQ)>INT){
+	    if(ms5){
+	      emit(f,"\tlda\t%s__msfpacc+%d\n",idprefix,1);
+	      do_byte4(f,"sta",&p->z,CHAR);
+	      emit(f,"\tlda\t%s__msfpacc+%d\n",idprefix,ms4?1:2);
+	      do_byte3(f,"sta",&p->z,CHAR);
+	    }else{
+	      do_byte4(f,"sta",&p->z,CHAR);
+	      do_byte3(f,"stx",&p->z,CHAR);
+	    }
+	  }
+	  if((t&NQ)>CHAR){
+	    emit(f,"\tlda\t%s__msfpacc+%d\n",idprefix,ms4?2:3);
+	    store_hibyte(f,&p->z,CHAR); 
+	  }
+	  emit(f,"\tlda\t%s__msfpacc+%d\n",idprefix,ms4?3:4);
+	  store_lobyte(f,&p->z,CHAR);
+	  continue;
+	}
+	if(ISFLOAT(t)){
+	  int sz=zm2l(sizetab[to&NQ]);
+	  if(!ms4&&!ms5) ierror(0);
+	  get_acc(f,p,POINTER);
+	  load_lobyte(f,&p->q1,CHAR);
+	  emit(f,"\tsta\t%s__msfpacc+%d\n",idprefix,sz-((ms5||sz==2)?0:1));
+	  load_hibyte(f,&p->q1,CHAR);
+	  emit(f,"\tsta\t%s__msfpacc+%d\n",idprefix,sz-((ms5||sz==2)?1:2));
+	  if((to&NQ)>=LONG){
+	    do_byte3(f,"lda",&p->q1,CHAR);
+	    emit(f,"\tsta\t%s__msfpacc+%d\n",idprefix,sz-(ms5?2:3));
+	    do_byte4(f,"lda",&p->q1,CHAR);
+	    if(ms5){
+	      emit(f,"\tsta\t%s__msfpacc+%d\n",idprefix,sz-3);
+	      if(!(to&UNSIGNED)){
+		emit(f,"\teor\t#255\n");
+		emit(f,"\trol\n");
+		if(ms5)
+		  emit(f,"\tlda\t#0\n");
+	      }
+	    }
+	  }
+	  if(ms5||sz<4){
+	    if(to&UNSIGNED)
+	      emit(f,"\tsec\n");
+	    emit(f,"\tldx\t#%d\n",(ms4&&sz==4)?128+8*sz-8:128+8*sz);
+	  }
+	  emit(f,"\tjsr\t%s__%cint%dtoflt\n",idprefix,(to&UNSIGNED)?'u':'s',sz*8);
+	  yval=NOVAL;
+	  if(ms5&&(to&UNSIGNED)&&sz==4)
+	    emit(f,"\tlsr\tFACSIGN\n");
+	  fstore(f,p,t);
+	  continue;
+	}
 	if(ISCHAR(t)){
 	  if(!isacc(q1))
 	    get_acc(f,p,CHAR);
@@ -3901,13 +4156,13 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
 	  if(of){
 	    emit(f,"\tclc\n");
 	    if(of&255)
-	      emit(f,"\tadc\t#%d\n",(of&255));
+	      emit(f,"\tadc\t#%d\n",(int)(of&255));
 	  }
 	  emit(f,"\tldx\t%s+1\n",mregnames[fp]);
 	  if(of&0xff00){
 	    emit(f,"\tpha\n");
 	    emit(f,"\ttxa\n");
-	    emit(f,"\tadc\t#%d\n",(of>>8)&255);
+	    emit(f,"\tadc\t#%d\n",(int)((of>>8)&255));
 	    emit(f,"\ttax\n");
 	    emit(f,"\tpla\n");
 	  }else if(of){
@@ -3980,7 +4235,7 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
 	  int i;
 	  eval_const(&p->q1.val,t);
 	  for(i=0;i<8;i++){
-	    emit(f,"\tlda\t#%d\n",zm2l(vmax)&255);
+	    emit(f,"\tlda\t#%d\n",(int)(zm2l(vmax)&255));
 	    vmax=zmrshift(vmax,l2zm(8L));
 	    if(c==PUSH||(p->z.flags&DREFOBJ)){
 	      sety(f,i+((c==PUSH)?pushed:0));
@@ -3997,7 +4252,7 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
 	  continue;
 	}  
 
-	if(!zmleq(p->q2.val.vmax,l2zm(4L))){
+	if(!zmleq(p->q2.val.vmax,l2zm(5L))){
 	  long len=zm2l(p->q2.val.vmax);
 	  int r1,r2,loops,looplab;
 	  if(len>32767) ierror(0);
@@ -4109,7 +4364,7 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
 	  }
 	  if(len>128){
 	    get_acc(f,p,POINTER); /* get x */
-	    emit(f,"\tldx\t#%ld\n",(((len-128)>>7)+1)&255);
+	    emit(f,"\tldx\t#%ld\n",(((len-128)>>7)+2)&255);
 	  }
 	  sety(f,(len-1)&127);
 	  if((optsize&&len>4)||len>8){ /* check with c816 update */
@@ -4197,7 +4452,11 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
 	    sety(f,pushed+3);
 	    emit(f,"\tsta\t(%s),y\n",mregnames[sp]);
 	  }
-
+	  if(!zmleq(p->q2.val.vmax,l2zm(4L))){
+	    do_byte5(f,"lda",&p->q1,t);
+	    sety(f,pushed+4);
+	    emit(f,"\tsta\t(%s),y\n",mregnames[sp]);
+	  }
 	  pushed+=zm2l(p->q2.val.vmax);
 	  continue;
 	}
@@ -4225,6 +4484,10 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
 	    load_acc(f,&p->q1,t);
 	    store_acc(f,&p->z,t);
 	  }else{
+	    if(!zmleq(p->q2.val.vmax,l2zm(4L))){
+	      do_byte5(f,"lda",&p->q1,t);
+	      do_byte5(f,"sta",&p->z,t);
+	    }
 	    if(!zmleq(p->q2.val.vmax,l2zm(3L))){
 	      if(c2m&&(v&0xFF000000)==0){
 		do_byte4(f,"stz",&p->z,t);
@@ -4342,27 +4605,36 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
 	    continue;
 	  }
 	}
-	if(ieee&&ISFLOAT(t)){
-	  if(!ieee) ierror(0);
+	if((ieee||ms4||ms5)&&ISFLOAT(t)){
+	  if(!ieee&&!ms4&&!ms5) ierror(0);
 	  t&=NQ;
-	  if(regs[LAST_PAIR]) ierror(0);
-	  regs[LAST_PAIR]=1;
-	  if(regs[ra]||regs[rax])
-	    ierror(0);
-	  load_address(f,LAST_PAIR,&p->q2,t);
-	  BSET(regused,t3);
-	  BSET(regused,t4);
-	  emit(f,"\tjsr\t%s__fload%c\n",idprefix,(t==FLOAT?'s':'d'));
+	  /*if(regs[ra]||regs[rax])
+	    ierror(0);*/
+	  get_acc(f,p,INT);
+	  if((ieee&&isreg(q1)&&p->q1.reg==rinfpacc)||
+	     (!ieee&&isreg(q2)&&p->q2.reg==rinfpacc)){
+	    obj m;
+	    m=p->q1;p->q1=p->q2;p->q2=m;
+	    if(bc==BLT) bc=BGT;
+	    else if(bc==BLE) bc=BGE;
+	    else if(bc==BGT) bc=BLT;
+	    else if(bc==BGE) bc=BLE;
+	  }
+	  fload(f,ieee?&p->q2:&p->q1,t);
+	  if(ms4||ms5) msptr2=1;
+	  faddr(f,ieee?&p->q1:&p->q2,t);
+	  emit(f,"\tjsr\t%s__fcmp%c\n",idprefix,((t==FLOAT||!ieee)?'s':'d'));
 	  yval=NOVAL;
-	  load_address(f,LAST_PAIR,&p->q1,t);
-	  emit(f,"\tjsr\t%s__fcmp%c\n",idprefix,(t==FLOAT?'s':'d'));
-	  yval=NOVAL;
-	  regs[LAST_PAIR]=0;
 	  if(bc==BLT||bc==BLE)
 	    emit(f,"\tbmi\t%s%d\n",labprefix,bout);
-	  else if(bc==BGT|bc==BGE)
-	    emit(f,"\tbvs\t%s%d\n",labprefix,bout);
-	  if(bc==BEQ||bc==BLE||bc==BGE)
+	  else if(bc==BGT||bc==BGE){
+	    if(!ieee&&bc==BGT)
+	      emit(f,"\tbeq\t%s%d\n",labprefix,++label);
+	    emit(f,"\t%s\t%s%d\n",ieee?"bvs":"bpl",labprefix,bout);
+	    if(!ieee&&bc==BGT)
+	      emit(f,"%s%d:\n",labprefix,label);
+	  }
+	  if(bc==BEQ||bc==BLE||(bc==BGE&&ieee))
 	    emit(f,"\tbeq\t%s%d\n",labprefix,bout);
 	  if(bc==BNE)
 	    emit(f,"\tbne\t%s%d\n",labprefix,bout);
@@ -4948,6 +5220,52 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
 	continue;
       }
 
+      if(c==MINUS){
+	if(!ISFLOAT(t)) ierror(0);
+	if(ms4||ms5){
+	  int same=compare_objects(&p->q1,&p->z);
+	  if(isreg(q1)&&p->q1.reg==rinfpacc){
+	    get_acc(f,p,INT);
+	    emit(f,"; removed fload %s (-)\n",regnames[rinfpacc]);
+	    rinfpacc=0;
+	    emit(f,"\tjsr\tNEGOP\n");
+	    yval=NOVAL;
+	    fstore(f,p,t);
+	    continue;
+	  }
+	  get_acc(f,p,CHAR);
+	  if(!same){
+	    load_lobyte(f,&p->q1,t);
+	    store_lobyte(f,&p->z,t);
+	  }
+	  get_acc(f,p,CHAR);
+	  load_hibyte(f,&p->q1,t);
+	  emit(f,"\teor\t#128\n");
+	  store_hibyte(f,&p->z,t);
+	  if(!same){
+	    do_byte3(f,"lda",&p->q1,t);
+	    do_byte3(f,"sta",&p->z,t);
+	    do_byte4(f,"lda",&p->q1,t);
+	    do_byte4(f,"sta",&p->z,t);
+	    if(ms5){
+	      do_byte5(f,"lda",&p->q1,t);
+	      do_byte5(f,"sta",&p->z,t);
+	    }
+	  }
+	  continue;
+	}else{
+	  ierror(0);
+	  get_acc(f,p,INT);
+	  if(!isreg(q1)||p->q1.reg!=rinfpacc)
+	    faddr(f,&p->q1,t);
+	  else
+	    emit(f,"; removed fload %s\n",regnames[rinfpacc]);
+	  emit(f,"\tjsr\t%s__fneg%c\n",idprefix,(t&NQ)==FLOAT?'s':'d');
+	  fstore(f,p,t);
+	  continue;
+	}
+      }
+
       if((c>=OR&&c<=AND)||(c>=LSHIFT&&c<=MOD)||c==ADDI2P||c==SUBIFP){
 	char *s;int t2=t,pt=p->typf2;
 	if(!isacc(z)){
@@ -4969,29 +5287,29 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
 	    insert_const(&p->q1.val,UNSIGNED|INT);
 	  }
 	}
+
 	if(c>=OR&&c<=AND)
 	  s=logicals[c-OR];
 	else
 	  s=arithmetics[c-LSHIFT];
       
 	if(ISFLOAT(t)){
-	  if(!ieee) ierror(0);
+	  if(!ieee&&!ms4&&!ms5) ierror(0);
 	  t&=NQ;
 	  if(regs[LAST_PAIR]) ierror(0);
 	  get_acc(f,p,INT);
-	  regs[LAST_PAIR]=1;
-	  load_address(f,LAST_PAIR,&p->q1,t);
-	  BSET(regused,t3);
-	  BSET(regused,t4);
-	  emit(f,"\tjsr\t%s__fload%c\n",idprefix,(t==FLOAT?'s':'d'));
+	  if(c==ADD||c==MULT){
+	    if((ieee&&isreg(q2)&&p->q2.reg==rinfpacc)||
+	       (!ieee&&isreg(q1)&&p->q1.reg==rinfpacc)){
+	      obj m;
+	      m=p->q1;p->q1=p->q2;p->q2=m;
+	    }
+	  }
+	  fload(f,ieee?&p->q1:&p->q2,t);
+	  faddr(f,ieee?&p->q2:&p->q1,t);
+	  emit(f,"\tjsr\t%s__f%s%c\n",idprefix,ename[c],((t==FLOAT||!ieee)?'s':'d'));
 	  yval=NOVAL;
-	  load_address(f,LAST_PAIR,&p->q2,t);
-	  emit(f,"\tjsr\t%s__f%s%c\n",idprefix,ename[c],(t==FLOAT?'s':'d'));
-	  yval=NOVAL;
-	  load_address(f,LAST_PAIR,&p->z,t);
-	  emit(f,"\tjsr\t%s__fstore%c\n",idprefix,(t==FLOAT?'s':'d'));
-	  yval=NOVAL;
-	  regs[LAST_PAIR]=0;
+	  fstore(f,p,t);
 	  continue;
 	}else if(ISLONG(t)){
 	  long l;int cnst=0;
@@ -5364,6 +5682,11 @@ void cleanup_cg(FILE *f)
 	emit(f,"%ld",zm2l(vmax)&0xffff);
 	if(i<words-1){emit(f,",");vmax=zmrshift(vmax,l2zm(16L));}
       }
+      if(ISFLOAT(p->t)&&ms5){
+	emit(f,"\n\tbyte\t");
+	gval.vmax=zmand(zmrshift(vmax,l2zm(16L)),l2zm(0xffL));
+	emitval(f,&gval,MAXINT);
+      }
       emit(f,"\n");
       /*emit(f,"%ld,%ld\n",zm2l(vmax)&0xffff,zm2l(zmrshift(vmax,l2zm(16L)))&0xffff);*/
     }
@@ -5376,7 +5699,8 @@ void cleanup_cg(FILE *f)
     emit(f,"\tzpage\t%s\n",mregnames[i]);
   for(i=FIRST_BIG;i<=LAST_BIG;i++)
     emit(f,"\tzpage\t%s\n",mregnames[i]);
-
+  if(ms4||ms5)
+    emit(f,"\tzpage\t___msptr\n");
 }
 void cleanup_db(FILE *f)
 {
@@ -5444,6 +5768,7 @@ int emit_peephole(void)
     "tya","tay",0,0,
     "tza","taz",0,0,
     "taz","tza",0,0,
+    "taz","taz",0,0,
     "lda","lda",0,REMOVE1ST,
     "ldx","ldx",0,REMOVE1ST,
     "ldy","ldy",0,REMOVE1ST,
@@ -5687,7 +6012,7 @@ char *use_libcall(int c,int t,int t2)
   char *ret=0;
 
   if(c==COMPARE){
-    if((t&NQ)==LLONG||(ISFLOAT(t)&&!ieee)){
+    if((t&NQ)==LLONG||(ISFLOAT(t)&&(!ieee&&!ms4&&!ms5))){
       sprintf(fname,"__cmp%s%s%ld",(t&UNSIGNED)?"u":"s",ISFLOAT(t)?"flt":"int",zm2l(sizetab[t&NQ])*8);
       ret=fname;
     }
@@ -5708,17 +6033,17 @@ char *use_libcall(int c,int t,int t2)
       if(t==FLOAT&&t2==DOUBLE) return "__flt64toflt32";
       if(t==DOUBLE&&t2==FLOAT) return "__flt32toflt64";
 
-      if(ISFLOAT(t)){
+      if(ISFLOAT(t)&&!ms4&&!ms5){
         sprintf(fname,"__%cint%ldtoflt%d",(t2&UNSIGNED)?'u':'s',zm2l(sizetab[t2&NQ])*8,(t==FLOAT)?32:64);
         ret=fname;
       }
-      if(ISFLOAT(t2)){
+      if(ISFLOAT(t2)&&!ms4&&!ms5){
         sprintf(fname,"__flt%dto%cint%ld",((t2&NU)==FLOAT)?32:64,(t&UNSIGNED)?'u':'s',zm2l(sizetab[t&NQ])*8);
         ret=fname;
       }
     }
     if(c==MULT&&(t&NQ)==CHAR&&!m65) return "__mulint8";
-    if((t&NQ)==SHORT||(t&NQ)==INT||(t&NQ)==LONG||(t&NQ)==LLONG||(!ieee&&ISFLOAT(t))){
+    if((t&NQ)==SHORT||(t&NQ)==INT||(t&NQ)==LONG||(t&NQ)==LLONG||(!ieee&&!ms4&&!ms5&&ISFLOAT(t))){
       if((c>=LSHIFT&&c<=MOD)||(c>=OR&&c<=AND)||c==KOMPLEMENT||c==MINUS){
 	if(m65&&ISLONG(t)&&(c==MULT||(c==DIV&&!divbug&&(t&UNSIGNED)))) return 0;
 	if(m65&&c==MULT&&ISSHORT(t)) return 0;
@@ -5828,8 +6153,8 @@ void insert_const(union atyps *p,int t)
   if(t==(UNSIGNED|LONG)) {p->vulong=vulong;return;}
   if(t==(UNSIGNED|LLONG)) {p->vullong=vullong;return;}
   if(t==(UNSIGNED|MAXINT)) {p->vumax=vumax;return;}
-  if(t==FLOAT) {p->vfloat=vfloat;return;}
-  if(t==DOUBLE) {p->vdouble=vdouble;return;}
+  if(t==FLOAT&&ieee) {p->vfloat=vfloat;return;}
+  if(t==DOUBLE||t==FLOAT) {p->vdouble=vdouble;return;}
   if(t==LDOUBLE) {p->vldouble=vldouble;return;}
   if(t==POINTER) {p->vuint=vuint;return;}
   if(t==FPOINTER||t==HPOINTER) {p->vulong=vulong;return;}
@@ -5870,8 +6195,8 @@ void eval_const(union atyps *p,int t)
 	vumax=zul2zum(p->vulong);
       vmax=zum2zm(vumax);vldouble=zum2zld(vumax);
     }else{
-      if(f==FLOAT) vldouble=zf2zld(p->vfloat);
-      else if(f==DOUBLE) vldouble=zd2zld(p->vdouble);
+      if(f==FLOAT&&ieee) vldouble=zf2zld(p->vfloat);
+      else if(f==DOUBLE||f==FLOAT) vldouble=zd2zld(p->vdouble);
       else vldouble=p->vldouble;
       vmax=zld2zm(vldouble);
       vumax=zld2zum(vldouble);

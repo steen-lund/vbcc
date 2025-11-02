@@ -1,4 +1,4 @@
-/*  $VER: vbcc (regs.c) $Revision: 1.36 $   */
+/*  $VER: vbcc (regs.c) $Revision: 1.38 $   */
 /*  Registerzuteilung           */
 
 #include "opt.h"
@@ -982,6 +982,14 @@ void create_const_vars(flowgraph *fg)
 	p->z.v=v;
 	p->z.val.vmax=l2zm(0L);
       }
+      if(addr_vkonst){
+	if((p->q1.flags&(VAR|DREFOBJ))==VAR&&(p->q1.v->storage_class==STATIC||p->q1.v->storage_class==EXTERN)){
+#if 0
+	  t=POINTER_VARADR(p->q1.v);
+	  v=add_const_var(&p->q1,t);
+#endif	  
+	}
+      }
       if(p==fg->end) break;
     }
   }
@@ -1348,7 +1356,7 @@ int find_best_local_reg(IC *fp,Var *v,int preferred)
       if(used==0&&!(p->z.flags&DREFOBJ))
 	break;
     }
-    if(p->code==CALL){
+    if(p->code==CALL&&p!=fp){
       if((p->q1.flags&(VAR|DREFOBJ))==VAR&&p->q1.v->fi&&(p->q1.v->fi->flags&ALL_REGS)&&!(disable&2048)){
 	for(r=1;r<=MAXR;r++){
 	  if(regscratch[r]&&BTST(p->q1.v->fi->regs_modified,r))

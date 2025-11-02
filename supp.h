@@ -1,4 +1,4 @@
-/*  $VER: vbcc (supp.h) $Revision: 1.61 $     */
+/*  $VER: vbcc (supp.h) $Revision: 1.63 $     */
 
 
 #ifndef SUPP_H
@@ -582,7 +582,7 @@ extern int disable;
 extern int misracheck,misraversion,misracomma,misratok;
 extern int pack_align;
 extern int short_push;
-extern int static_cse,dref_cse;
+extern int static_cse,dref_cse,addr_vkonst;
 extern int no_eff_ics,early_eff_ics;
 extern int force_statics,prefer_statics;
 extern int range_opt;
@@ -673,6 +673,12 @@ extern void pric(FILE *,IC *);
 extern void pric2(FILE *,IC *);
 extern void probj(FILE *,obj *,int);
 extern void emit(FILE *,const char *,...);
+#ifdef __VBCC__
+#pragma printflike emit
+#endif
+#ifdef __GNUC__
+void emit(FILE *,const char *,...) __attribute__ ((format(printf, 2, 3)));
+#endif
 extern void emit_char(FILE *,int);
 void emit_flush(FILE *);
 void remove_asm(void);
@@ -703,7 +709,7 @@ extern int mkvec(int,int);
 extern zmax szof(type *);
 extern int is_vlength(type *);
 extern Var *vlength_szof(type *);
-extern zmax struct_offset(struct_declaration *,const char *);
+extern zmax struct_offset(struct_declaration *,const char *,int);
 extern zmax falign(type *);
 int get_first_base_type(type *);
 extern int objs_equal(obj *,obj *,int);
@@ -791,6 +797,8 @@ hashtable *new_hashtable(size_t);
 size_t hashcode(char *);
 void add_hashentry(hashtable *,char *,hashdata);
 hashdata find_name(hashtable *,char *);
+
+extern struct_list *find_member(const char *, struct_declaration *);
 
 #ifdef HAVE_TARGET_PRAGMAS
 extern int handle_pragma(const char *);

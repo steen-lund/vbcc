@@ -1319,7 +1319,7 @@ void gen_code(FILE *f,struct IC *p,struct Var *v,zmax offset)
 							emit(f, "\tLD\t%s, %s LSL 4\n", regnames[tmpreg], regnames[tmpreg]);
 							pof2 -= 4;
 						}
-						emit(f, "\tLD\t%s, %s LSL %d\n", regnames[tmpreg], regnames[tmpreg], pof2);
+						emit(f, "\tLD\t%s, %s LSL %ld\n", regnames[tmpreg], regnames[tmpreg], pof2);
 
 						if (!(p->z.flags & REG)) {
 							emit(f, "# MULT64\n");

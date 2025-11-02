@@ -193,7 +193,7 @@ static int all_regs;
 
 struct StatFPtrList {
   struct StatFPtrList *next;
-  struct Var *vptr;
+  int label;
 };
 static struct StatFPtrList *firstfptr = NULL;
 
@@ -350,14 +350,14 @@ static void load_address(FILE *f,int r,struct obj *o,int typ)
 	    struct StatFPtrList **oldsfp=&firstfptr;
 	    struct StatFPtrList *sfp=firstfptr;
 	    while(sfp){
-	      if(sfp->vptr==o->v) break;
+	      if(sfp->label==zm2l(o->v->offset)) break;
 	      oldsfp=&sfp->next;
 	      sfp=sfp->next;
 	    }
 	    if(!sfp){
 	      *oldsfp=sfp=mymalloc(sizeof(struct StatFPtrList));
 	      sfp->next=NULL;
-	      sfp->vptr=o->v;
+	      sfp->label=zm2l(o->v->offset);
 	    }
 	  }
 	  emit(f,"\tl%s\t%s,%s",ldt(LONG),mregnames[r],tocprefix);
@@ -3715,9 +3715,9 @@ void cleanup_cg(FILE *f)
     if(f) section=TOC;
   }
   while(tfp=fp){
-    emit(f,"%s%s%ld:\n\t.long\t%s%ld\n",
-	 tocprefix,labprefix,zm2l(tfp->vptr->offset),
-	 labprefix,zm2l(tfp->vptr->offset));
+    emit(f,"%s%s%d:\n\t.long\t%s%d\n",
+	 tocprefix,labprefix,tfp->label,
+	 labprefix,tfp->label);
     fp=fp->next;
     free(tfp);
   }
@@ -3727,8 +3727,8 @@ void cleanup_cg(FILE *f)
     if(f){
       if(POWEROPEN&&!use_sd(p->typ)){
         emit(f,tocname);
-        emit(f,"%s%s%ld:\n",tocprefix,labprefix,zm2l(p->label));
-        emit(f,"\t.long\t%s%ld\n",labprefix,zm2l(p->label));
+        emit(f,"%s%s%d:\n",tocprefix,labprefix,p->label);
+        emit(f,"\t.long\t%s%d\n",labprefix,p->label);
         if(f) section=TOC;
       }
       if(use_sd(p->typ)){

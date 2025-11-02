@@ -1,4 +1,4 @@
-/*  $VER: vbcc (type_expr.c) $Revision: 1.74 $   */
+/*  $VER: vbcc (type_expr.c) $Revision: 1.76 $   */
 
 #include "vbc.h"
 
@@ -1705,12 +1705,8 @@ int type_expression2(np p,type *ttyp)
     int i,n=-1;
     struct_list *sl=0;
     if(!ecpp){
-      for(i=0;i<p->left->ntyp->exact->count;i++)
-	if(!strcmp((*p->left->ntyp->exact->sl)[i].identifier,p->right->identifier)) n=i;
-      if(n<0)
-        return 0;
-      else
-        sl=&(*p->left->ntyp->exact->sl)[n];
+      sl=find_member(p->right->identifier,p->left->ntyp->exact);
+      if(!sl) return 0;
     }
 #ifdef HAVE_ECPP
 /* removed */
@@ -1758,16 +1754,13 @@ int type_expression2(np p,type *ttyp)
   }
   if(f==DSTRUCT){
     struct_declaration *sd=p->left->ntyp->exact;
+    struct struct_list *sl;
     char *identifier=p->right->identifier;
     int i=0,f,bfs=-1,bfo=-1;type *t;np new;zmax offset=l2zm(0L);
     if(!ISSTRUCT(p->left->ntyp->flags)&&!ISUNION(p->left->ntyp->flags))
       {error(8);return 0;}
     if(type_uncomplete(p->left->ntyp)){error(11);return 0;}
     if(p->right->flags!=MEMBER) ierror(0);
-    if(i>=p->left->ntyp->exact->count) {error(23,p->right->identifier);return 0;}
-    if(!ecpp){
-      offset=struct_offset(sd,identifier);
-    }
 #ifdef HAVE_ECPP
 /* removed */
 /* removed */
@@ -1819,7 +1812,7 @@ int type_expression2(np p,type *ttyp)
 /* removed */
 /* removed */
 #endif
-    if(ISUNION(p->left->ntyp->flags)) offset=l2zm(0L);
+    offset=struct_offset(sd,identifier,p->left->ntyp->flags);
     p->flags=CONTENT;
     if(p->ntyp) {freetyp(p->ntyp);p->ntyp=0;}
     new=new_node();
@@ -1846,12 +1839,16 @@ int type_expression2(np p,type *ttyp)
 
     /* Check for bitfields */
     i=0;
+#if 0
+    printf("f1 %p\n",find_member(identifier,sd));
     while(i<sd->count&&strcmp((*sd->sl)[i].identifier,identifier)){
       i++;
     }
-    if(i<sd->count){
-      bfo=(*sd->sl)[i].bfoffset;
-      bfs=(*sd->sl)[i].bfsize;
+#endif
+    sl=find_member(identifier,sd);
+    if(sl){
+      bfo=sl->bfoffset;
+      bfs=sl->bfsize;
     }else
       bfs=-1;
     if(bfs!=-1){
@@ -2139,6 +2136,7 @@ int type_expression2(np p,type *ttyp)
 		if(fflags==' '&&at!=INT){error(214);return ok;}
 		if(fflags=='l'&&at!=LONG){error(214);return ok;}
 		if(fflags==LL&&at!=LLONG){error(214);return ok;}
+		mask|=lflag;
 		break;
 	      case 'x':
 	      case 'u':
@@ -2148,6 +2146,7 @@ int type_expression2(np p,type *ttyp)
 		if(fflags==' '&&at!=(UNSIGNED|INT)){error(214);return ok;}
 		if(fflags=='l'&&at!=(UNSIGNED|LONG)){error(214);return ok;}
 		if(fflags==LL&&at!=(UNSIGNED|LLONG)){error(214);return ok;}
+		mask|=lflag;
 		break;
 	      case 'e':
 	      case 'f':
@@ -2174,7 +2173,7 @@ int type_expression2(np p,type *ttyp)
 	  if(mask_opt){
 	    Var *v;char repl[MAXI+16];
 	    if(mask){
-	      sprintf(repl,"%s.%lu",s,1L);
+	      sprintf(repl,"%s.%lu",s,1UL);
 	      v=find_var(repl,0);
 	      if(!v){
 		type *t;
@@ -2184,7 +2183,7 @@ int type_expression2(np p,type *ttyp)
 	      }
 	    }
 	    if(mask)
-	      sprintf(repl,"%s.%lu",(flags&PRINTFLIKE)?"vfprintf":"vfscanf",mask);
+	      sprintf(repl,"%s.%lu",(flags&PRINTFLIKE)?"vfprintf":"vfscanf",(unsigned long)mask);
 	    else
 	      sprintf(repl,"%s",(flags&PRINTFLIKE)?"vfprintf":"vfscanf");
 	    needs(repl);

@@ -1,4 +1,4 @@
-/*  $VER: vbcc (opt.c) $Revision: 1.57 $    */
+/*  $VER: vbcc (opt.c) $Revision: 1.59 $    */
 /*  allgemeine Routinen fuer den Optimizer und Steuerung der einzelnen  */
 /*  Laeufe                                                              */
 
@@ -12,7 +12,7 @@ static char FILE_[]=__FILE__;
 /*  Sind use/change-Listen initialisiert?   */
 int have_alias;
 
-int static_cse=1,dref_cse=1;
+int static_cse=1,dref_cse=1,addr_vkonst=0;
 int no_eff_ics,early_eff_ics;
 
 #ifdef ALEX_REG
@@ -483,7 +483,7 @@ static void cnv_static(Var *v)
     v->offset=++label;
     v->flags|=(USEDASSOURCE|USEDASDEST|DEFINED|STATICAUTO);
     if(v->clist){free_clist(v->clist);v->clist=0;}
-    if(DEBUG&1024) printf("changing %s(%p) to static (L%ld)\n",v->identifier,v,zm2l(v->offset));
+    if(DEBUG&1024) printf("changing %s(%p) to static (L%ld)\n",v->identifier,(void*)v,zm2l(v->offset));
   }
 }
 
@@ -711,10 +711,10 @@ void recalc_offsets(flowgraph *g)
     for(i=0;i<vcount-rcount;i++){
       j=i;
       while((j=eqto[j])>=0){
-	if(!zmleq(sz[j],sz[i])){sz[i]=sz[j];b=1;j=i;if(DEBUG&1024) printf("lmset %d(%p) to sz %ld\n",i,vilist[i],zm2l(sz[i]));}
-	if(!zmleq(sz[i],sz[j])){sz[j]=sz[i];b=1;if(DEBUG&1024) printf("lmset %d(%p) to sz %ld\n",j,vilist[j],zm2l(sz[j]));}
-	if(!zmleq(al[j],al[i])){al[i]=al[j];b=1;j=i;if(DEBUG&1024) printf("lmset %d(%p) to al %ld\n",i,vilist[i],zm2l(al[i]));}
-	if(!zmleq(al[i],al[j])){al[j]=al[i];b=1;if(DEBUG&1024) printf("lmset %d(%p) to al %ld\n",j,vilist[j],zm2l(al[j]));}
+	if(!zmleq(sz[j],sz[i])){sz[i]=sz[j];b=1;j=i;if(DEBUG&1024) printf("lmset %d(%p) to sz %ld\n",i,(void*)vilist[i],zm2l(sz[i]));}
+	if(!zmleq(sz[i],sz[j])){sz[j]=sz[i];b=1;if(DEBUG&1024) printf("lmset %d(%p) to sz %ld\n",j,(void*)vilist[j],zm2l(sz[j]));}
+	if(!zmleq(al[j],al[i])){al[i]=al[j];b=1;j=i;if(DEBUG&1024) printf("lmset %d(%p) to al %ld\n",i,(void*)vilist[i],zm2l(al[i]));}
+	if(!zmleq(al[i],al[j])){al[j]=al[i];b=1;if(DEBUG&1024) printf("lmset %d(%p) to al %ld\n",j,(void*)vilist[j],zm2l(al[j]));}
 
       }
     }
@@ -742,9 +742,9 @@ void recalc_offsets(flowgraph *g)
 	  }while(used[j]&&(j=eqto[j])>=0);
 	  if(j<0) ierror(0);
 	  if(!zmleq(sz[i],sz[j])) 
-	    {printf("%d(%p) %d(%p) %ld %ld\n",i,vilist[i],j,vilist[j],zm2l(sz[i]),zm2l(sz[j]));ierror(0);}
+	    {printf("%d(%p) %d(%p) %ld %ld\n",i,(void*)vilist[i],j,(void*)vilist[j],zm2l(sz[i]),zm2l(sz[j]));ierror(0);}
 	  if(!zmleq(al[i],al[j]))
-	    {printf("%d(%p) %d(%p) %ld %ld\n",i,vilist[i],j,vilist[j],zm2l(al[i]),zm2l(al[j]));ierror(0);}
+	    {printf("%d(%p) %d(%p) %ld %ld\n",i,(void*)vilist[i],j,(void*)vilist[j],zm2l(al[i]),zm2l(al[j]));ierror(0);}
 	  vilist[i]->offset=vilist[j]->offset;
 	  if(DEBUG&2048) printf("set to %ld (eqto)\n",(long)zm2l(vilist[i]->offset));
 	  continue;

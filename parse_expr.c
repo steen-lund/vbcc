@@ -1,4 +1,4 @@
-/*  $VER: vbcc (parse_expr.c) $Revision: 1.27 $  */
+/*  $VER: vbcc (parse_expr.c) $Revision: 1.28 $  */
 
 #include "vbcc_cpp.h"
 #include "vbc.h"
@@ -428,11 +428,11 @@ np unary_expression(void)
 	  else
 	    error(57);
 	  if(ctok->type!=NAME) error(76);
-	  if(t->flags!=STRUCT){
+	  if(t->flags!=STRUCT&&t->flags!=UNION){
 	    error(310);
 	    vumax=ul2zum(0UL);
 	  }else
-	    vumax=zm2zum(struct_offset(t->exact,ctok->name));
+	    vumax=zm2zum(struct_offset(t->exact,ctok->name,t->flags));
 	  next_token();
 	  if(HAVE_INT_SIZET)
 	    new->val.vuint=zum2zui(vumax);
@@ -807,6 +807,7 @@ np constant_expression(void)
   np new; zldouble db;
   zumax value,zbase,digit;unsigned long base=10,t;
   char *s,*merk;int warned=0,tm=0;
+  union atyps v;
   merk=s=ctok->name;
   value=ul2zum(0L);
   new=new_node();
@@ -1009,17 +1010,17 @@ np constant_expression(void)
   }
 
   if(*s) error(232);
-  
-  if(new->ntyp->flags==FLOAT) new->val.vfloat=zld2zf(db);
-  else if(new->ntyp->flags==DOUBLE) new->val.vdouble=zld2zd(db);
-  else if(new->ntyp->flags==LDOUBLE) new->val.vldouble=db;
-  else if(new->ntyp->flags==INT) new->val.vint=zm2zi(zum2zm(value));
-  else if(new->ntyp->flags==(UNSIGNED|INT)) new->val.vuint=zum2zui(value);
-  else if(new->ntyp->flags==LONG) new->val.vlong=zm2zl(zum2zm(value));
-  else if(new->ntyp->flags==(UNSIGNED|LONG)) new->val.vulong=zum2zul(value);
-  else if(new->ntyp->flags==LLONG) new->val.vllong=zm2zll(zum2zm(value));
-  else if(new->ntyp->flags==(UNSIGNED|LLONG)) new->val.vullong=zum2zull(value);
-  else ierror(0);
+
+  tm=new->ntyp->flags;
+  if(ISFLOAT(tm)){
+    v.vldouble=db;
+    eval_const(&v,LDOUBLE);
+  }else{
+    v.vumax=value;
+    eval_const(&v,(UNSIGNED|MAXINT));
+  }
+  insert_const(&new->val,tm);
+
   next_token();
   return new;
 }

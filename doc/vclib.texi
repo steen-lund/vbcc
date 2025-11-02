@@ -1678,9 +1678,38 @@ Keep in mind: Your JAGUAR will get a red background color to indicate @code{main
 The jaglib API documentation is available in a separate document. There is more demo code
 available in the @uref{https://github.com/toarnold/jaglib-demo, jaglib-demo} gibhub repository.
 
-@section 6502/C64/C128
+@section 6502/C64/C128/VIC20/C16
 
-This is a port of vclib to the C64 and C128.
+This is a port of vclib to the C64, C128, VIC20 and C16. The provided config files are:
+@table @code
+@item +c64
+      C64 standard
+@item +c64r
+      C64 reentrant
+@item +c64reu
+      C64 with REU expansion
+@item +c128
+      C128 standard
+@item +c128r
+      C128 reentrant
+@item +c16
+      C16/Plus4 standard
+@item +c16r
+      C16/Plus4 reentrant
+@item +c128
+      C128 standard
+@item +c128r
+      C128 reentrant
+@item +vic20
+      VIC-20 without (8K+) RAM expansion standard
+@item +vic20r
+      VIC-20 without (8K+) RAM expansion reentrant
+@item +vic20x
+      VIC-20 with (8K+) RAM expansion standard
+@item +vic20xr
+      VIC-20 with (8K+) RAM expansion reentrant
+@end table
+
 
 @subsection Startup and Memory
 
@@ -1689,15 +1718,17 @@ Startup and memory layout is described in the following paragraphs.
 @subsubsection Startup
 
 The default linker file creates program files that are loaded to address
-0x801 for C64 and 0x1C01 for C128. A BASIC line is included so that the program can be started using @code{RUN}
-from BASIC. The startup code
-will turn off the BASIC ROM to allow usage of RAM until 0xD000 (C128: 0xC000) and most of the
-zero page without need for any special handling. The BSS segment will be cleared
-during startup.
+0x801 for C64, 0x1C01 for C128, 0x1001 for C16 and unexpanded VIC-20, and 0x1201 for VIC-20
+with at least 8k memory expansion. A BASIC line is included so that the program can be
+started using @code{RUN} from BASIC. The startup code
+will turn off the BASIC ROM (for C64/C128) to allow usage of RAM until 0xD000 (C128: 0xC000,
+C16: 0x8000, VIC-20: 0x2000/0x8000)
+and most of the zero page without need for any special handling. The BSS segment will be
+cleared during startup.
 
 With the default configuration, after exiting the C program, an infinite loop will
-be entered. When using the @code{+c64r} or @code{+c128r} config, the program will return to BASIC
-an can be started again.
+be entered. When using the @code{+c64r}, @code{+c128r} @code{+c16r}, @code{+vic20r} or 
+@code{+vic20xr} config, the program will return to BASIC and can be started again.
 However, this needs additional memory as the init values for the data section have
 to be stored in RAM. Also, some register values and zero page contents have to be
 saved. The overhead depends on the amount of initialized variables.
@@ -1726,14 +1757,18 @@ is used, but this can be changed in the linker file.
 
 @subsubsection Stack
 
-By default, the user stack is mapped from @code{0xC800..0xD000} for C64
-and @code{0xBE00..0xC000} for C128. The size can be
-changed at the top of @code{vlink.cmd}.
+By default, the user stack is mapped from @code{0xC800..0xD000} for C64,
+@code{0xBE00..0xC000} for C128 and @code{0x1F00..0x2000} for an unexpanded VIC-20.
+For VIC-20 with >8K expansion and C16, the stack will be put after the data/bss sections
+(this does not allow the stack to grow into heap space, but allows to work with different
+RAM sizes).
+The stack size can be changed at the top of @code{vlink.cmd}.
 
 @subsubsection Heap
 
 Code and data/BSS are mapped starting after the BASIC init line.
-The heap is placed in the remaining space to stack start.
+The heap is placed in the remaining space to stack start, or after the stack (in case of
+C16 and expanded VIC-20).
 
 @subsubsection Banking
 
@@ -1787,6 +1822,11 @@ it includes functions for saving/restoring registers.
 
 stdio supports @code{stdout}, @code{stderr} (both using the
 screen) and @code{stdin} (keyboard). Both are unbuffered by default.
+Buffer sizes (including @code{sprintf/snprintf}) are limited to 127 bytes.
+
+Note that the @code{BASIN} kernal routine on the VIC-20 does not seem to work correctly
+if a previous output caused a line-wrap. As a workaround you can write a
+line-feed before requesting keyboard input.
 
 Furthermore, file IO with standard C functions is supported 
 for 1541 and compatible disk drives. Other devices have not been tested.
@@ -1908,6 +1948,7 @@ it includes functions for saving/restoring registers.
 
 At the moment, stdio only supports @code{stdout}, @code{stderr} (both using the
 screen) and @code{stdin} (simple input via joypad).
+Buffer sizes (including @code{sprintf/snprintf}) are limited to 127 bytes.
 
 @code{printf/scanf} functions which support floating point are contained in
 the math library only.
@@ -2012,6 +2053,8 @@ it includes functions for saving/restoring registers.
 
 At the moment, stdio only supports @code{stdout}, @code{stderr} (both using the
 screen) and @code{stdin} (keyboard). Both are line-buffered by default.
+Buffer sizes (including @code{sprintf/snprintf}) are limited to 127 bytes.
+
 
 @code{printf/scanf} functions which support floating point are contained in
 the math library only.
@@ -2224,6 +2267,8 @@ it includes functions for saving/restoring registers.
 are supported. Furthermore normal file operations are possible using the 
 usual C functions. There are hardcoded limits on the maximum number of
 simultaneously open files as well as the length of filenames.
+Buffer sizes (including @code{sprintf/snprintf}) are limited to 127 bytes.
+
 
 Sequential reading and writing is supported, but no seeking. Furthermore, the
 @code{remove()} call is supported.
@@ -2479,6 +2524,7 @@ At the moment, stdio only supports @code{stdout}, @code{stderr} (both using the
 screen) and @code{stdin} (keyboard). Both are unbuffered by default.
 Using those streams will directly access the screen buffer and keyboard
 hardware. No ROM functions are needed once the program runs.
+Buffer sizes (including @code{sprintf/snprintf}) are limited to 127 bytes.
 
 Furthermore it is possible to read files on the SD-card using standard
 C functions after opening them using @code{fopen()}. Hyppo services are
@@ -2660,6 +2706,8 @@ it includes functions for saving/restoring registers.
 
 At the moment, stdio only supports @code{stdout}, @code{stderr} (both using the
 screen) and @code{stdin} (keyboard).
+Buffer sizes (including @code{sprintf/snprintf}) are limited to 127 bytes.
+
 
 @code{printf/scanf} functions which support floating point are contained in
 the math library only.
@@ -2858,6 +2906,8 @@ it includes functions for saving/restoring registers.
 
 stdio supports @code{stdout}, @code{stderr} (both using the
 screen) and @code{stdin} (keyboard). Both are unbuffered by default.
+Buffer sizes (including @code{sprintf/snprintf}) are limited to 127 bytes.
+
 
 Furthermore, file IO with standard C functions is supported 
 for files on the SD-Card. Other devices have not been tested.
@@ -3009,6 +3059,8 @@ it includes functions for saving/restoring registers.
 
 At the moment, stdio only supports @code{stdout}, @code{stderr} (both using the
 screen) and @code{stdin} (keyboard). Both are unbuffered by default.
+Buffer sizes (including @code{sprintf/snprintf}) are limited to 127 bytes.
+
 
 @code{printf/scanf} functions which support floating point are contained in
 the math library only.
@@ -3145,6 +3197,8 @@ copyright notice of those files.
 If @code{stdin}, @code{stdout} or @code{stderr} are used, the screen will be
 initialized and a font tilemap is installed. Otherwise, no such initialization
 is done automatically.
+Buffer sizes (including @code{sprintf/snprintf}) are limited to 127 bytes.
+
 
 The library contains a default character set. It can be replaced by linking
 an object containing a character set mapped to section @code{rodata.near.1}
@@ -3220,6 +3274,7 @@ it includes functions for saving/restoring registers.
 
 At the moment, stdio only supports @code{stdout}, @code{stderr} (both using the
 screen) and @code{stdin} (keyboard). Both are unbuffered by default.
+Buffer sizes (including @code{sprintf/snprintf}) are limited to 127 bytes.
 
 @code{printf/scanf} functions which support floating point are contained in
 the math library only.
@@ -3353,6 +3408,7 @@ it includes functions for saving/restoring registers.
 
 stdio supports @code{stdout}, @code{stderr} (both using the
 screen) and @code{stdin} (keyboard). Both are unbuffered by default.
+Buffer sizes (including @code{sprintf/snprintf}) are limited to 127 bytes.
 
 File I/O is supported using ProDOS calls. Note that ProDOS requires large
 (1K page-aligned) buffers for each open file. Therefore it is recommended
@@ -3436,7 +3492,7 @@ Output files are created in OMF format. The standard config
 file is specified with @code{+iigs}. It defaults to the large data model.
 
 Library versions for the huge mode can be linked by specifying @code{-mhuge -lvch}
-(or @code{-mhuge -lmh -lvch}) if floating point is used. @code{+iigss} activates an
+(or @code{-mhuge -lms4h/-lmh -lvch}) if floating point is used. @code{+iigss} activates an
 experimental configuration for the tiny mode with 16bit data pointers. This
 model generates more efficient code, but it has limited practicality as it
 requires that all data not explicitly declared  @code{__far/__huge} fits in
@@ -3450,7 +3506,8 @@ has to be set to @code{S16} or @code{EXE}.
 
 The following linker options are set in the vbcc config file (usually
 @code{vbcc/config/iigs}) for the linker commands (@code{-ld, -ldv, -l2, -l2v}) and
-can be adjusted if necessary.
+can be adjusted if necessary. These options can also be set in the frontend
+@code{vc} using the passthrough mechanism (i.e. @code{--stack=<n>} etc.).
 
 @table @option
 @item -stack=<n>
@@ -3471,7 +3528,8 @@ can be adjusted if necessary.
 @subsection Stack
 
 The stack size is set to 4K by default. It can be adjusted by changing the
-@code{-stack} option in the linker command line (see above).
+@code{-stack} option in the linker command line or @code{--stack} in @code{vc}
+(see above).
 
 @subsection Heap
 
@@ -3511,7 +3569,7 @@ Not yet supported.
 @subsection Floating Point / wozfp
 
 When using floating point, the math library @code{libm.a} must be linked using
-the @code{-lm} option. It contains the floating routines as well as versions of
+the @code{-lm/-lmh/-lms} option. It contains the floating routines as well as versions of
 the @code{printf/scanf} family that support floating point.
 
 The floating point routines are based on Steve Wozniaks routines from the 70s,
@@ -3520,15 +3578,12 @@ small and
 reasonably usable, but they do not fully satisfy the requirements of C99 and
 do not make use of the extra features of the 65816.
 
-Only a part of the C library functions for floating point is implemented. The
-list currently includes:
+@subsection Floating Point / MSBASIC
 
-@itemize
-@item @code{exp()}
-@item @code{pow()}
-@item @code{log()}
-@item @code{log10()}
-@end itemize
+Alternatively, you can use routines based on the Microsoft Basic for 6502 and
+adapted to vbcc65816. While a little bit larger, those routines are generally
+significantly faster and offer better precision. You have to compile using
+@code{-msfp4} and link with @code{-lms4/-lms4h/-lms4s}.
 
 @subsection Floating Point / IEEE
 
@@ -3541,7 +3596,7 @@ Not yet implemented.
 This is a port of vclib to the SNES/Super Famicom. The standard config
 file is used with @code{+snes-hi}. It defaults to the large data model
 for a Hi-ROM configuration. Library versions for the huge mode can be
-linked by specifying @code{-mhuge -lvch} (or @code{-mhuge -lmh -lvch}) if
+linked by specifying @code{-mhuge -lvch} (or @code{-mhuge -lms4h/-lmh -lvch}) if
 floating point is used.
 
 @code{+snes-his} activates a similar configuration that uses the tiny model
@@ -3574,7 +3629,8 @@ linker file (usually @code{vlink-hi.cmd}, @code{vlink-his.cmd}, or
 The stack is located at the end of the LORAM area. Its size is 1K by default
 and can be adjusted using the symbol @code{STACKLEN} at the top of the linker
 file (usually @code{vlink-hi.cmd}, @code{vlink-his.cmd}, or
-@code{vlink-mini.cmd}).
+@code{vlink-mini.cmd}). It can also be set with @code{--DSTACKLEN=<n>} when
+using @code{vc}.
 
 @subsection Heap
 
@@ -3655,7 +3711,7 @@ the math library only.
 @subsection Floating Point / wozfp
 
 When using floating point, the math library @code{libm.a} must be linked using
-the @code{-lm} option. It contains the floating routines as well as versions of
+the @code{-lm/-lmh/-lms} option. It contains the floating routines as well as versions of
 the @code{printf/scanf} family that support floating point.
 
 The floating point routines are based on Steve Wozniaks routines from the 70s,
@@ -3664,15 +3720,13 @@ small and
 reasonably usable, but they do not fully satisfy the requirements of C99 and
 do not make use of the extra features of the 65816.
 
-Only a part of the C library functions for floating point is implemented. The
-list currently includes:
+@subsection Floating Point / MSBASIC
 
-@itemize
-@item @code{exp()}
-@item @code{pow()}
-@item @code{log()}
-@item @code{log10()}
-@end itemize
+Alternatively, you can use routines based on the Microsoft Basic for 6502 and
+adapted to vbcc65816. While a little bit larger, those routines are generally
+significantly faster and offer better precision. You have to compile using 
+@code{-msfp4} and link with @code{-lms4/-lms4h/-lms4s}.
+
 
 @subsection Floating Point / IEEE
 
@@ -3689,7 +3743,7 @@ below for more details on adaptations).
 The standard config
 file is used with @code{+s816}, and it defaults to the large data model.
 Library versions for the huge mode can be
-linked by specifying @code{-mhuge -lvch} (or @code{-mhuge -lmh -lvch}) if
+linked by specifying @code{-mhuge -lvch} (or @code{-mhuge -lms4h/-lmh -lvch}) if
 floating point is used.
 
 @code{+s816s} activates a similar configuration that uses the tiny model
@@ -3704,7 +3758,7 @@ is also an example configuration for a system running from ROM
 configuration assumes a system with ROM from 0x008000..0x07FFFF and RAM from
 0x000000..0x007FFF and 0x080000..0x0FFFFF. By default, the large memory model
 is used. Library versions for the huge mode can be
-linked by specifying @code{-mhuge -lvch} (or @code{-mhuge -lmh -lvch}) if
+linked by specifying @code{-mhuge -lvch} (or @code{-mhuge -lms4h/-lmh -lvch}) if
 floating point is used.
 
 @subsection Stack
@@ -3712,6 +3766,7 @@ floating point is used.
 The stack is located at the end of the RAM area in bank 0. Its size is 1K by default
 and can be adjusted using the symbol @code{STACKLEN} at the top of the linker
 file (usually @code{vlink.cmd}, @code{vlinks.cmd}, or @code{vlink-rom.cmd}).
+It can also be specified in @code{vc} using @code{--DSTACKLEN=<n>}.
 
 @subsection Heap
 
@@ -3736,7 +3791,7 @@ the math library only.
 @subsection Floating Point / wozfp
 
 When using floating point, the math library @code{libm.a} must be linked using
-the @code{-lm} option. It contains the floating routines as well as versions of
+the @code{-lm/-lmh/-lms} option. It contains the floating routines as well as versions of
 the @code{printf/scanf} family that support floating point.
 
 The floating point routines are based on Steve Wozniaks routines from the 70s,
@@ -3745,15 +3800,13 @@ small and
 reasonably usable, but they do not fully satisfy the requirements of C99 and
 do not make use of the extra features of the 65816.
 
-Only a part of the C library functions for floating point is implemented. The
-list currently includes:
+@subsection Floating Point / MSBASIC 
 
-@itemize
-@item @code{exp()}
-@item @code{pow()}
-@item @code{log()}
-@item @code{log10()}
-@end itemize
+Alternatively, you can use routines based on the Microsoft Basic for 6502 and
+adapted to vbcc65816. While a little bit larger, those routines are generally
+significantly faster and offer better precision. You have to compile using 
+@code{-msfp4} and link with @code{-lms4/-lms4h/-lms4s}.
+
 
 @subsection Floating Point / IEEE
 

@@ -1,4 +1,4 @@
-/*  $VER: vbcc (declaration.c) $Revision: 1.94 $    */
+/*  $VER: vbcc (declaration.c) $Revision: 1.96 $    */
 
 #include <string.h>
 #include <stdio.h>
@@ -331,7 +331,7 @@ type *declaration_specifiers(void)
 #endif
               if(tree) free_expression(tree);
             }else{
-              if(!ecpp&&*ident==0){
+              if(!c11&&!ecpp&&*ident==0){
 		freetyp(t);
 		error(53);
 		break;
@@ -380,9 +380,12 @@ type *declaration_specifiers(void)
             }
             if(*ident!=0){
               int i=scount;
-              while(--i>=0)
+              while(--i>=0){
                 if(!strcmp((*sl)[i].identifier,ident))
                   error(16,ident);
+		if(c11&&*ident&&!*(*sl)[i].identifier&&(*sl)[i].styp->exact&&find_member(ident,(*sl)[i].styp->exact))
+		  error(16,ident);
+	      }
             }
 #ifdef HAVE_MISRA
 /* removed */
@@ -633,8 +636,8 @@ type *declaration_specifiers(void)
 /* removed */
 #endif
           ident=imerk;
-					add_sl(ssd,sl);
-					free(sl);
+	  add_sl(ssd,sl);
+	  free(sl);
           if(ctok->type!=RBRA) error(56); else next_token();
           new->flags=notdone|type_qualifiers;
         }
@@ -1479,6 +1482,7 @@ void init_sl(struct_list *sl){
 /* removed */
 #endif
 }
+
 void add_sl(struct_declaration *sd,struct_list (*sl)[])
 /*  Fuegt ein struct_list-Array in eine struct_declaration ein.     */
 /*  Das Array muss mind. sd->count Elements haben und wird kopiert. */
@@ -1903,7 +1907,7 @@ void vla_jump_fix(void)
 	  /*printf("jump within the same context\n");*/
 	}else{
 	  if(vn[nest]){
-	    if(DEBUG&1) printf("have to set sp to %p\n",return_last_vlasp);
+	    if(DEBUG&1) printf("have to set sp to %p\n",(void*)return_last_vlasp);
 	    p->savedsp=return_last_vlasp;
 	  }else{
 	    int ndiff=nest-return_vla_nest-1;
@@ -2063,6 +2067,7 @@ Var *add_var(char *identifier, type *t, int storage_class,const_list *clist)
   new->tunit=last_tunit;
   new->inline_copy=0;
   new->index=-1;
+  new->ctyp=0;
 #ifdef HAVE_TARGET_ATTRIBUTES
   new->tattr=0;
 #endif
@@ -3561,6 +3566,7 @@ const_list *designator(type *t,const_list *cl)
       error(53);
     }else{
       int i,n=-1;
+      /*printf("f1 %p\n",find_member(ctok->name,t->exact));*/
       for(i=0;i<t->exact->count;i++)
 	if(!strcmp((*t->exact->sl)[i].identifier,ctok->name)) n=i;
       if(n<0){
@@ -3569,10 +3575,9 @@ const_list *designator(type *t,const_list *cl)
       }
       next_token();
       killsp();
-
       if(!ISUNION(f)||!cl)
 	cl=insert_cl(cl,l2zm((long)n));
-
+      
       return cl;
     }
   }

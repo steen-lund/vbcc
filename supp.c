@@ -1,4 +1,4 @@
-/*  $VER: vbcc (supp.c) $Revision: 1.55 $     */
+/*  $VER: vbcc (supp.c) $Revision: 1.56 $     */
 
 #include "supp.h"
 #include "opt.h"
@@ -619,24 +619,52 @@ zmax szof(type *t)
   }
   return sizetab[i];
 }
-zmax struct_offset(struct_declaration *sd,const char *identifier)
+struct_list *find_member(const char *identifier,struct_declaration *scope)
+{
+  int i;
+  if(!identifier||!*identifier||!scope)
+    ierror(0);
+  for(i=0;i<scope->count;++i){
+    if(!*(*scope->sl)[i].identifier&&(*scope->sl)[i].styp->exact){
+      struct struct_list *p=find_member(identifier,(*scope->sl)[i].styp->exact);
+      if(p) return p;
+    }else{
+      if(!strcmp((*scope->sl)[i].identifier,identifier)){
+	return &(*scope->sl)[i];
+      }
+    }
+  }
+  return 0;
+}
+zmax struct_offset(struct_declaration *sd,const char *identifier,int t)
 {
   int i=0,intbitfield=-1;zmax offset=l2zm(0),al;
+  struct struct_list *sl=0;
+  t&=NQ;
   while(i<sd->count&&strcmp((*sd->sl)[i].identifier,identifier)){
+    if(!((*(*sd->sl)[i].identifier))&&(*sd->sl)[i].styp->exact)
+      if(sl=find_member(identifier,(*sd->sl)[i].styp->exact))
+	break;
     if((*sd->sl)[i].bfoffset>=0){
       if(i+1<sd->count&&(*sd->sl)[i+1].bfoffset>0){
         i++;
         continue;
       }
     }
-    al=(*sd->sl)[i].align;
-    offset=zmmult(zmdiv(zmadd(offset,zmsub(al,l2zm(1L))),al),al);
-    offset=zmadd(offset,szof((*sd->sl)[i].styp));
+    if(t!=UNION){
+      al=(*sd->sl)[i].align;
+      offset=zmmult(zmdiv(zmadd(offset,zmsub(al,l2zm(1L))),al),al);
+      offset=zmadd(offset,szof((*sd->sl)[i].styp));
+    }
     i++;
   }
   if(i>=sd->count) {error(23,identifier);return l2zm(0L);}
-  al=(*sd->sl)[i].align;
-  offset=zmmult(zmdiv(zmadd(offset,zmsub(al,l2zm(1L))),al),al);
+  if(sl){
+    offset=zmadd(offset,struct_offset((*sd->sl)[i].styp->exact,identifier,(*sd->sl)[i].styp->flags));
+  }else if(t!=UNION){
+    al=(*sd->sl)[i].align;
+    offset=zmmult(zmdiv(zmadd(offset,zmsub(al,l2zm(1L))),al),al);
+  }
   return offset;
 }
 #ifdef HAVE_ECPP

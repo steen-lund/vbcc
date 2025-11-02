@@ -156,8 +156,10 @@ $(OBJDIR)/mbasic.o: mbasic.c supp.h $(TRGDIR)/machine.h $(OBJDIR)/dt.h
 $(OBJDIR)/minicomp.o: minicomp.c minicomp.h supp.h $(TRGDIR)/machine.h $(OBJDIR)/dt.h
 	$(CC) -c minicomp.c -o $(OBJDIR)/minicomp.o -I$(TRGDIR) -I$(OBJDIR)
 
-$(OBJDIR)/minicompg.tab.o: minicompg.y minicomplexer.c minicomp.h supp.h
+$(OBJDIR)/minicompg.tab.c: minicompg.y minicomplexer.c minicomp.h supp.h
 	bison minicompg.y
+
+$(OBJDIR)/minicompg.tab.o: minicompg.tab.c minicomp.h supp.h
 	$(CC) -c minicompg.tab.c -o $(OBJDIR)/minicompg.tab.o -I$(TRGDIR) -I$(OBJDIR)
 
 $(OBJDIR)/supp.o: supp.c supp.h $(TRGDIR)/machine.h $(OBJDIR)/dt.h

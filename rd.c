@@ -1,4 +1,4 @@
-/*  $VER: vbcc (rd.c) $Revision: 1.17 $    */
+/*  $VER: vbcc (rd.c) $Revision: 1.18 $    */
 /*  reaching definitions and constant propagation   */
 
 #include "opt.h"
@@ -152,7 +152,7 @@ void num_defs(void)
   
   if(DEBUG&2048){
     for(i=0;i<vcount;i++){
-      printf("var_defs for var %i %s(%p):\n",i,vilist[i]->identifier,vilist[i]);
+      printf("var_defs for var %i %s(%p):\n",i,vilist[i]->identifier,(void*)vilist[i]);
       print_rd(var_defs[i]);
     }
 	
@@ -535,7 +535,7 @@ int propagate(IC *sic,obj *o,int cponly,int global)
       if(o==&sic->q2&&(q2typ(sic)&NQ)!=(t&NQ)) return 0;
       if(o==&sic->z&&(ztyp(sic)&NQ)!=(t&NQ)) return 0;
       
-      if(DEBUG&1024) printf("can replace %ld+<%s>(%p) by constant\n",zm2l(o->val.vmax),o->v->identifier,o->v);
+      if(DEBUG&1024) printf("can replace %ld+<%s>(%p) by constant\n",zm2l(o->val.vmax),o->v->identifier,(void*)o->v);
       /* TODO: do we need eval_const/insert_const (if representation of unsigned is different? */
       o->val=*val;
       o->flags=KONST;

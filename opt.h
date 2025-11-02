@@ -1,4 +1,4 @@
-/*  $VER: vbcc (opt.h) $Revision: 1.5 $    */
+/*  $VER: vbcc (opt.h) $Revision: 1.6 $    */
 
 #include "supp.h"
 
@@ -48,7 +48,7 @@ extern bvtype *cp_globals,*cp_address,*cp_statics,*cp_drefs,*cp_act,*cp_dest;
 extern bvtype **copies;
 
 extern int have_alias;
-extern int static_cse,dref_cse;
+extern int static_cse,dref_cse,addr_vkonst;
 
 typedef struct {
   union atyps min,max;

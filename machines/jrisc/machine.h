@@ -1,23 +1,10 @@
-/*  Example backend for vbcc, it models a generic 32bit RISC or CISC
-    CPU.
+/*  JRISC (Atari Jaguar RISC) for vbcc
 
-    Configurable at build-time are:
-    - number of (32bit) general-purpose-registers
-    - number of (64bit) floating-point-registers
-    - number of (8bit) condition-code-registers
-    - mechanism for stack-arguments (moving ot fixed sp)
-
-    It allows to select as run-time-options:
-    - two- or three-address code
-    - memory operands or load-store-architecture
-    - number of register-arguments
-    - number of caller-save-registers
 */
 
 /* buil-time configurable options: */
-#define NUM_GPRS 32
-#define NUM_FPRS 32
-#define NUM_CCRS 8
+#define NUM_GPRS 64
+#define NUM_PAIRS 32
 #define FIXED_SP 0
 
 #include "dt.h"
@@ -25,22 +12,24 @@
 /* internally used by the backend */
 #define FIRST_GPR 1
 #define LAST_GPR (FIRST_GPR+NUM_GPRS-1)
-#define FIRST_FPR (LAST_GPR+1)
-#define LAST_FPR (FIRST_FPR+NUM_FPRS-1)
-#define FIRST_CCR (LAST_FPR+1)
-#define LAST_CCR (FIRST_CCR+NUM_CCRS-1)
+#define FIRST_PAIR (LAST_GPR+1)
+#define LAST_PAIR (LAST_GPR+NUM_PAIRS)
 
 /*  This struct can be used to implement machine-specific           */
 /*  addressing-modes.                                               */
 /*  Currently possible are (const,gpr) and (gpr,gpr)                */
 struct AddressingMode{
-    int flags;
-    int base;
-    long offset;
+  int flags;
+  int base;
+  int idx;
+  long offset;
 };
 
+#define IMM_IND 1
+#define GPR_IND 2
+
 /*  The number of registers of the target machine.                  */
-#define MAXR NUM_GPRS+NUM_FPRS+NUM_CCRS
+#define MAXR (NUM_GPRS+NUM_PAIRS)
 
 /*  Number of commandline-options the code-generator accepts.       */
 #define MAXGF 20
@@ -54,6 +43,8 @@ struct AddressingMode{
 /*  This specifies the smallest integer type that can be added to a */
 /*  pointer.                                                        */
 #define MINADDI2P INT
+#define MAXADDI2P LONG
+
 
 /*  If the bytes of an integer are ordered most significant byte    */
 /*  byte first and then decreasing set BIGENDIAN to 1.              */
@@ -81,14 +72,11 @@ struct AddressingMode{
 
 /*  Parameters on the stack should be pushed in order rather than   */
 /*  in reverse order.                                               */
-#if FIXED_SP
-#define ORDERED_PUSH FIXED_SP
-#endif
+/*#define ORDERED_PUSH FIXED_SP*/
 
 /*  Structure for reg_parm().                                       */
 struct reg_handle{
     unsigned long gregs;
-    unsigned long fregs;
 };
 
 /*  We have some target-specific variable attributes.               */
@@ -103,10 +91,10 @@ struct reg_handle{
 /* We have a implement our own cost-functions to adapt 
    register-allocation */
 #define HAVE_TARGET_RALLOC 1
-#define cost_move_reg(x,y) 1
-#define cost_load_reg(x,y) 2
-#define cost_save_reg(x,y) 2
-#define cost_pushpop_reg(x) 3
+#define cost_move_reg(x,y) 2
+extern int cost_load_reg();
+#define cost_save_reg(x,y) cost_load_reg(x,y)
+#define cost_pushpop_reg(x) 6
 
 /* size of buffer for asm-output, this can be used to do
    peephole-optimizations of the generated assembly-output */
@@ -151,3 +139,7 @@ struct reg_handle{
 
 /* convert multiplications/division by powers of two to shifts */
 #define HAVE_POF2OPT 1
+
+/* We use builtin libcalls for some operations */
+#define HAVE_LIBCALLS 1
+

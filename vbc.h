@@ -1,4 +1,4 @@
-/*  $VER: vbcc (vbc.h) $Revision: 1.25 $    */
+/*  $VER: vbcc (vbc.h) $Revision: 1.26 $    */
 
 #include "supp.h"
 
@@ -119,7 +119,7 @@ extern void needs(char *s);
 
 extern int usz;
 
-extern int c99;
+extern int c99,c11;
 extern int opencl;
 extern int merge_strings;
 extern int mask_opt;

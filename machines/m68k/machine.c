@@ -1,4 +1,4 @@
-/*  $VER: vbcc (m68k/machine.c) $Revision: 1.147 $     */
+/*  $VER: vbcc (m68k/machine.c) $Revision: 1.148 $     */
 /*  Code generator for Motorola 680x0 CPUs. Supports 68000-68060+68881/2    */
 /*  and ColdFire.                                                           */
 /*  vasm, PhxAss and the GNU assembler is supported.                        */
@@ -2401,7 +2401,7 @@ static void assign(FILE *f,IC *p,obj *q,obj *z,int c,long size,int t)
     if(ISSTRUCT(t)||ISUNION(t)){
       if(p->code==PUSH&&!zmeqto(p->q2.val.vmax,p->z.val.vmax)){
 	if(size!=4&&size!=2) ierror(size);
-	emit(f,"\tsubq.%s\t#%d,%s\n",cf?"l":"w",size,mregnames[sp]);
+	emit(f,"\tsubq.%s\t#%d,%s\n",cf?"l":"w",(int)size,mregnames[sp]);
 	push(size);
 	size=zm2l(p->z.val.vmax);
 	if(size!=1&&size!=2) ierror(0);

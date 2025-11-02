@@ -8,7 +8,7 @@
 @setfilename index.texi
 @settitle vbcc manual
 @setchapternewpage odd
-@set UPDATED February 2025
+@set UPDATED October 2025
 
 @ifinfo
 
@@ -76,7 +76,7 @@ Copyright 1995-2025 Volker Barthelmann
 
 @section Legal
 
-    vbcc is copyright in 1995-2022 by Volker Barthelmann.
+    vbcc is copyright in 1995-2025 by Volker Barthelmann.
 
     This archive may be redistributed without modifications and used
     for non-commercial purposes.

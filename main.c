@@ -1,4 +1,4 @@
-/*  $VER: vbcc (main.c) $Revision: 1.72 $    */
+/*  $VER: vbcc (main.c) $Revision: 1.74 $    */
 #include "vbcc_cpp.h"
 #include "vbc.h"
 #include "opt.h"
@@ -45,7 +45,7 @@ void raus(void)
   if(errors) fprintf(stderr,"%d error%s found!\n",errors,multname[errors>1]);
   if(debug_info&&out)
     cleanup_db(out);
-  while(nesting>=0) leave_block();
+  while(nesting>=0) leave_block(); 
   /*FIXME: do I have to close input-file? */
   if(!wpo)
     cleanup_cg(out);
@@ -295,6 +295,8 @@ void gen_function(FILE *f,Var *v,int real_gen)
 {
   IC *p,*new;int i,had_regs;
   if(DEBUG&1) printf("gen_function <%s>,f=%p,real_gen=%d\n",v->identifier,(void*)f,real_gen);
+  cur_func=v->identifier;
+  cur_funcv=v;
   if(!v->fi) ierror(0);
   if(errors!=0) return;
   first_ic=last_ic=0;
@@ -407,6 +409,7 @@ void gen_function(FILE *f,Var *v,int real_gen)
     gen_code(f,v->fi->opt_ic,v,v->fi->max_offset);
     static_stack_check(v);
   }
+  cur_funcv=0;
 }
 /* handle functions in a const list before caller */
 static void do_clist_calls(const_list *cl)
@@ -580,6 +583,7 @@ int main(int argc,char *argv[])
   if(c_flags[32]&USEDFLAG) debug_info=1;
   if(c_flags[33]&USEDFLAG) c99=1;
   if(c_flags[60]&USEDFLAG) c99=0;
+  if(c_flags[72]&USEDFLAG) c11=1;
   if(c_flags[34]&USEDFLAG) {wpo=1;no_emit=1;}
   if(c_flags[36]&USEDFLAG) {noitra=1;}
   if(c_flags[37]&USEDFLAG) {
@@ -692,6 +696,7 @@ int main(int argc,char *argv[])
     if(c_flags[1]&USEDFLAG){
       out=open_out(c_flags_val[1].p,0);
     }else{
+      if(!inname) error(374);
       if(wpo)
 	out=open_out(inname,"o");
       else
@@ -706,8 +711,9 @@ int main(int argc,char *argv[])
     fprintf(out,"%cVBCC",0);
   }
   if(debug_info) init_db(out);
-  if(c_flags[2]&USEDFLAG) ic1=open_out(inname,"ic1");
-  if(c_flags[3]&USEDFLAG) ic2=open_out(inname,"ic2");
+  if(!inname&&!(c_flags[1]&USEDFLAG)) error(374);
+  if(c_flags[2]&USEDFLAG) ic1=open_out(inname?inname:c_flags_val[1].p,"ic1");
+  if(c_flags[3]&USEDFLAG) ic2=open_out(inname?inname:c_flags_val[1].p,"ic2");
   c99_compliant=0;
   init_cpp();
   if(c_flags[35]&USEDFLAG){
